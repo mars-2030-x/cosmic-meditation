@@ -62,6 +62,7 @@ const cosmic = new CosmicSpace({
 })
 const breath = new GuidedBreathUI({ container: app })
 const sound = new SoundEngine()
+let previousBreathPhase: BreathSnapshot['phase'] = breath.phase
 
 const stopStageSync = eventBus.on('stageChanged', (stage) => {
   stageValue.textContent = stage
@@ -76,6 +77,10 @@ const stopQualitySync = eventBus.on('qualityChanged', (tier) => {
 cosmic.setDepthBand(appState.depthBand)
 
 const stopBreathSync = breath.subscribe((snapshot) => {
+  if (previousBreathPhase === 'idle' && snapshot.phase === 'inhale') {
+    void activateAudio()
+  }
+  previousBreathPhase = snapshot.phase
   appState.updateFromBreath(snapshot)
   applyBreathState(snapshot)
 })
@@ -87,7 +92,7 @@ function applyBreathState(snapshot: BreathSnapshot): void {
 }
 
 let audioStarted = false
-const activateAudio = async (): Promise<void> => {
+async function activateAudio(): Promise<void> {
   if (audioStarted) {
     return
   }
@@ -96,7 +101,6 @@ const activateAudio = async (): Promise<void> => {
     await sound.start()
     audioStarted = true
     audioValue.textContent = 'active'
-    // 성공 시에만 리스너 해제 — 실패하면 다음 제스처에서 재시도 가능
     window.removeEventListener('pointerdown', gestureHandler)
     window.removeEventListener('keydown', gestureHandler)
   } catch (error) {
@@ -115,7 +119,7 @@ const perfTimer = window.setInterval(() => {
   const metrics = cosmic.getPerformanceMetrics()
   const fps = metrics.fps.toFixed(0)
   if (metrics.memoryMB > 0) {
-    perfValue.textContent = `${fps} fps • ${metrics.memoryMB.toFixed(1)} MB`
+    perfValue.textContent = `${fps} fps \u2022 ${metrics.memoryMB.toFixed(1)} MB`
   } else {
     perfValue.textContent = `${fps} fps`
   }

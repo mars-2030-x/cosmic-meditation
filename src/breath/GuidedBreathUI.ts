@@ -20,17 +20,13 @@ const BREATH_PATTERN: BreathSegment[] = [
   { phase: 'exhale', durationMs: 8_000 },
 ]
 
-const FULL_CYCLE_SECONDS = BREATH_PATTERN.reduce(
-  (total, segment) => total + segment.durationMs,
-  0,
-) / 1000
-
 export class GuidedBreathUI implements IBreathSource {
   phase: BreathPhase = 'idle'
   intensity = 0
   depth = 0
 
   private phaseProgress = 0
+  private phaseRemainingSeconds: number | null = null
   private cycleCount = 0
   private consistency = 0.75
   private activeSegmentIndex = 0
@@ -73,7 +69,7 @@ export class GuidedBreathUI implements IBreathSource {
     title.style.cssText = 'margin: 0 0 8px 0; font-size: 15px; font-weight: 600;'
 
     const subtitle = document.createElement('p')
-    subtitle.textContent = `Inhale 4s • Hold 7s • Exhale 8s (${FULL_CYCLE_SECONDS}s/cycle)`
+    subtitle.textContent = '화면 안내에 따라 호흡하세요 \u2022 Inhale 4s \u00B7 Hold 7s \u00B7 Exhale 8s'
     subtitle.style.cssText =
       'margin: 0 0 10px 0; font-size: 12px; color: rgba(232, 238, 255, 0.76);'
 
@@ -146,6 +142,7 @@ export class GuidedBreathUI implements IBreathSource {
     this.phase = BREATH_PATTERN[0].phase
     this.segmentStartedAtMs = performance.now()
     this.lastTickAtMs = this.segmentStartedAtMs
+    this.phaseRemainingSeconds = Math.ceil(BREATH_PATTERN[0].durationMs / 1000)
     this.publishSnapshot()
     this.render()
     this.rafId = requestAnimationFrame(this.tick)
@@ -164,6 +161,7 @@ export class GuidedBreathUI implements IBreathSource {
 
     this.phase = 'idle'
     this.phaseProgress = 0
+    this.phaseRemainingSeconds = null
     this.intensity = 0
     this.consistency = Math.max(0.25, this.consistency * 0.92)
     this.publishSnapshot()
@@ -198,6 +196,10 @@ export class GuidedBreathUI implements IBreathSource {
 
     this.phase = segment.phase
     this.phaseProgress = Math.min(1, elapsedMs / segment.durationMs)
+    this.phaseRemainingSeconds = Math.max(
+      0,
+      Math.ceil((segment.durationMs - elapsedMs) / 1000),
+    )
     const targetIntensity = this.targetIntensity(segment.phase, this.phaseProgress)
     this.intensity += (targetIntensity - this.intensity) * 0.18
 
@@ -263,21 +265,31 @@ export class GuidedBreathUI implements IBreathSource {
   }
 
   private render(): void {
-    this.phaseLabel.textContent = this.formatPhaseLabel(this.phase)
+    this.phaseLabel.textContent = this.formatPhaseLabel(
+      this.phase,
+      this.phaseRemainingSeconds,
+    )
     this.progressBar.style.width = `${Math.round(this.phaseProgress * 100)}%`
     this.cycleLabel.textContent = `Cycles: ${this.cycleCount}`
     this.depthLabel.textContent = `Depth: ${(this.depth * 100).toFixed(0)}%`
     this.toggleButton.textContent = this.isRunning ? 'Stop Session' : 'Start Session'
   }
 
-  private formatPhaseLabel(phase: BreathPhase): string {
+  private formatPhaseLabel(phase: BreathPhase, remainingSeconds: number | null): string {
+    const withRemaining = (label: string): string => {
+      if (remainingSeconds === null) {
+        return label
+      }
+      return `${label}  ${remainingSeconds}s`
+    }
+
     switch (phase) {
       case 'inhale':
-        return 'Inhale'
+        return withRemaining('Inhale')
       case 'hold':
-        return 'Hold'
+        return withRemaining('Hold')
       case 'exhale':
-        return 'Exhale'
+        return withRemaining('Exhale')
       case 'idle':
         return 'Idle'
     }
@@ -286,6 +298,7 @@ export class GuidedBreathUI implements IBreathSource {
   private resetSession(): void {
     this.phase = 'idle'
     this.phaseProgress = 0
+    this.phaseRemainingSeconds = null
     this.intensity = 0
     this.depth = 0
     this.cycleCount = 0
